@@ -12,6 +12,10 @@ const carSchema = new Schema({
     type: String,
     pricePerWeek: Number,
     pricePerHour: Number,
+    availDate:{
+        type: Date,
+        default :  Date.now
+    },
     image: [{
         imageUrl: {
             type: String

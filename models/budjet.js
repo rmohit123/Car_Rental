@@ -9,6 +9,9 @@ const budjetSchema=new Schema({
     total: {
         type: Number
     },
+    duration : {
+        type: Number
+    },
     renter: {
         type: Schema.Types.ObjectId,
         ref: 'User'

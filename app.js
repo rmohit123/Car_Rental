@@ -215,11 +215,46 @@ app.get('/listCar',requireLogin,(req,res)=>{
 });
 
 app.post('/listCar',requireLogin,(req,res)=>{
-  
+    const newCar={
+        owner: req.user._id,
+        make: req.body.make,
+        model: req.body.model,
+        year: req.body.year,
+        type: req.body.type
+    }
+    new Car(newCar).save((err,car)=>{
+        if(err){
+            throw err;
+        }
+        if(car){
+            res.render('listCar2',{
+                title: 'Finish',
+                car: car
+            });
+        }
+    })
 });
 
 app.post('/listCar2',requireLogin,(req,res)=>{
-    
+    Car.findOne({_id:req.body.carID})
+    .then((car)=>{
+        let url={
+            imageUrl: `'YOUR_AWS_BUCKET_LINK'/${req.body.image}`
+        };
+        car.pricePerHour=req.body.pricePerHour;
+        car.pricePerWeek=req.body.pricePerWeek;
+        car.location=req.body.location;
+        car.picture=`YOUR_AWS_BUCKET_LINK/${req.body.image}`;
+        car.image.push(url);
+        car.save((err,car)=>{
+            if(err){
+                throw err;
+            }
+            if(car){
+                res.redirect('/showCars');
+            }
+        })
+    })  
 });
 
 app.get('/showCars',requireLogin,(req,res)=>{
@@ -227,19 +262,48 @@ app.get('/showCars',requireLogin,(req,res)=>{
     .populate('owner')
     .sort({date:'desc'})
     .then((cars)=>{
+        const today = new Date();
+        console.log("jkkk" , today);
+        const availableCars = cars.filter(car => car.availDate < today);
+        
         res.render('showCars',{
-            cars:cars
+            cars:availableCars
         })
     })
 })
 
 app.post('/uploadImage',requireLogin,upload.any(),(req,res)=>{
- 
+    const form=new formidable.IncomingForm();
+    form.on('file',(field,file)=>{
+        console.log(file);
+    });
+    form.on('error',(err)=>{
+        console.log(err);
+    });
+    form.on('end',()=>{
+        console.log('Image received successfully..');
+    });
+    form.parse(req);
 });
 
 
 app.get('/logout',(req,res)=>{
     // console.log(req.user);
+    User.findById({_id:req.user._id})
+    .then((user)=>{
+        user.online=false;
+        user.save((err,user)=>{
+            if(err){
+                throw err;
+            }
+            if(user){
+                req.logout(function(err) {
+                    if (err) { return next(err); }
+                    res.redirect('/');
+                });
+            }
+        });
+    });
  
 });
 
@@ -274,12 +338,147 @@ app.get('/RentCar/:id',(req,res)=>{
 });
 
 app.post('/calculateTotal/:id',(req,res)=>{
-  
+    Car.findOne({_id:req.params.id})
+    .then((car)=>{
+        console.log(req.body);
+        var hour=parseInt(req.body.hour);
+        var week=parseInt(req.body.week);
+        var totalHours=hour*car.pricePerHour;
+        var totalWeeks=week*car.pricePerWeek;
+        var total=totalHours+totalWeeks;
+        var duration = week;
+        const budjet={
+            carID:req.params.id,
+            total: total,
+            duration :duration,
+            renter: req.user._id,
+            date: new Date()
+        }
+
+        new Budjet(budjet).save((err,budjet)=>{
+            if(err){
+                console.log(err);
+            }
+            if(budjet){
+                Car.findOne({_id:req.params.id})
+                .then((car)=>{
+                    var stripeTotal=budjet.total*100;
+                    res.render('checkout',{
+                        budjet:budjet,
+                        car: car,
+                        stripeTotal: stripeTotal
+                    })
+                })
+            }
+        })
+    })
 });
 
 
 
+app.post('/chargeRenter/:id',(req,res)=>{
+    Budjet.findOne({_id:req.params.id})
+    .populate('renter')
+    .then((budjet)=>{
+        const amount=budjet.total*100;
+        stripe.customers.create({
+         email: req.body.stripeEmail,
+         source: req.body.stripeToken
+        })
+        .then((customer)=>{
+         stripe.paymentIntents.create({
+             amount:amount,
+             description: `$${budjet.total} for renting a car`,
+             currency: 'usd',
+             customer: customer.id,
+             receipt_email: customer.email
+         },(err,charge)=>{
+             if(err){
+                 console.group(err);
+             }
+             if(charge){
+                 
+                 Car.findOne({_id:budjet.carID})
+                 .then((car)=>{
+                     var week = budjet.duration;
+                     var p1 = car.pricePerWeek;
+                     var p2 = budjet.total;
+                     var p3 = (p2-p1*week)/(car.pricePerHour);
+                     var currentDate = new Date();
+                     currentDate.setDate(currentDate.getDate() +week*7); // Adds 7 days to the current date
+                     currentDate.setHours(currentDate.getHours() + p3 ); // Adds 3 hours to the current time
+                     Car.updateOne({_id:budjet.carID} , {availDate:currentDate}, function (err, result) {
+                         if (err){
+                             console.log(err)
+                         }else{
+                             console.log("Result :", result) 
+                         }
+                     })
+                     // car.availDate = currentDate;
+                 })
+                 console.log(charge);
+                 console.log(budjet);
+                 res.render('success',{
+                     charge:charge,
+                     budjet:budjet
+                 })
+             }
+         })
+        })
+ 
+    }) 
+ })
+ 
 
+ const server=http.createServer(app);
+ const io=socketIO(server);
+ io.on('connection',(socket)=>{
+     console.log('Connected to Client');
+ 
+     socket.on('ObjectID',(onecar)=>{
+         console.log('one car is ',onecar);
+         Car.findOne({_id: onecar.carID})
+         .then((car)=>{
+             // console.log(car);
+             socket.emit('car',car);
+         });
+     });
+ 
+     Car.find({})
+     .then((cars)=>{
+         const today = new Date();
+ const availableCars = cars.filter(car => car.availDate <= today);
+ 
+         socket.emit('allcars',{cars:availableCars});
+     });
+ 
+     socket.on('LatLng',(data)=>{
+         console.log(data);
+         console.log("klkkkkkkkkkkkkkkkk");
+         Car.findOne({owner:data.car.owner})
+         .then((car)=>{
+             // car.coords.lat=data.car.coords?.lat;
+             // car.coords.lng=data.car.coords?.lng;
+             car.coords.lat=data.data.results[0].geometry.location.lat;
+             car.coords.lng=data.data.results[0].geometry.location.lng;
+             car.save((err,car)=>{
+                 if(err){
+                     throw err;
+                 }
+                 if(car){
+                     console.log("lat lng updated");
+                 }
+             });
+         });
+     });
+ 
+     socket.on('disconnect',(socket)=>{
+         console.log('Disconnected from Clinet');
+     });
+ });
+ 
+ 
+ 
 
 const port=process.env.PORT || 3000;
 
