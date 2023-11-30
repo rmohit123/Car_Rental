@@ -17,6 +17,20 @@ Welcome to  Car Rental Web App README! This web application allows users to seam
 - **Database**: MongoDB
 - **Payment Processing**: Stripe API
 - **Map Integration**: Google Maps API
+  
+## Live in action👀 
+
+
+
+
+https://github.com/rmohit123/Car_Rental/assets/107171585/42ca60b1-2e75-41af-8073-0e6af980c7e8
+
+
+https://github.com/rmohit123/Car_Rental/assets/107171585/76b40ef0-b1c7-48b8-a55a-5e6935c51a21
+
+
+
+
 
 # Install .
 Getting the frontend build:
